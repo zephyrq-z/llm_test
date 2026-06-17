@@ -1,0 +1,6 @@
+# Streamlit Community Cloud 依赖
+# 自动从 pyproject.toml 安装，但 Streamlit Cloud 也支持 requirements.txt
+openai>=1.12.0
+requests>=2.31.0
+streamlit>=1.32.0
+python-dotenv>=1.0.1

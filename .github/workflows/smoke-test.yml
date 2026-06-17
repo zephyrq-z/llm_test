@@ -1,0 +1,98 @@
+name: Smoke Test - LLM Connectivity
+
+on:
+  # 每周一 UTC 08:00 自动跑 (北京时间 16:00)
+  schedule:
+    - cron: '0 8 * * 1'
+  
+  # 支持手动触发
+  workflow_dispatch:
+    inputs:
+      providers:
+        description: '测试厂商 (逗号分隔: openai,deepseek,zhipu,qwen,moonshot,yi,groq)'
+        required: false
+        default: 'all'
+        type: string
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: pip install -e .
+
+      - name: Run connectivity tests
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+          QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
+          MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
+          YI_API_KEY: ${{ secrets.YI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          cat > test_report.md << 'HEADER'
+          
+          | 厂商 | 模型 | 状态 | 延迟 (ms) | 备注 |
+          |------|------|------|-----------|------|
+          HEADER
+          
+          # 定义测试配置
+          declare -A configs=(
+            ["openai"]="https://api.openai.com/v1|gpt-3.5-turbo|$OPENAI_API_KEY|OpenAI"
+            ["deepseek"]="https://api.deepseek.com|deepseek-chat|$DEEPSEEK_API_KEY|DeepSeek"
+            ["zhipu"]="https://open.bigmodel.cn/api/paas/v4|glm-3-turbo|$ZHIPU_API_KEY|智谱 AI"
+            ["qwen"]="https://dashscope.aliyuncs.com/compatible-mode/v1|qwen-turbo|$QWEN_API_KEY|阿里云通义"
+            ["moonshot"]="https://api.moonshot.cn/v1|moonshot-v1-8k|$MOONSHOT_API_KEY|Moonshot"
+            ["yi"]="https://api01.01.ai/v1|yi-34b-chat|$YI_API_KEY|01.AI Yi"
+            ["groq"]="https://api.groq.com/openai/v1|llama3-8b-8192|$GROQ_API_KEY|Groq"
+          )
+          
+          # 解析输入参数
+          PROVIDERS="${{ github.event.inputs.providers || 'all' }}"
+          
+          for provider in "${!configs[@]}"; do
+            if [[ "$PROVIDERS" == "all" ]] || [[ "$PROVIDERS" == *"$provider"* ]]; then
+              IFS='|' read -r baseurl model apikey name <<< "${configs[$provider]}"
+              
+              if [[ -z "$apikey" ]]; then
+                echo "| $name | $model | ⏭️ 跳过 | - | 未配置 API Key |" >> test_report.md
+                continue
+              fi
+              
+              echo "Testing $name ($model)..."
+              result=$(llm-test test --baseurl "$baseurl" --apikey "$apikey" --model "$model" 2>&1 || echo "FAILED")
+              
+              if echo "$result" | grep -q "状态:.*success"; then
+                latency=$(echo "$result" | grep "耗时" | grep -oE '[0-9]+\.?[0-9]*' | head -1 || echo "N/A")
+                echo "| $name | $model | ✅ 成功 | $latency | - |" >> test_report.md
+              else
+                status=$(echo "$result" | grep "状态:" | sed 's/.*状态:[[:space:]]*//' || echo "unknown")
+                echo "| $name | $model | ❌ 失败 | - | $status |" >> test_report.md
+              fi
+            fi
+          done
+          
+          echo "" >> test_report.md
+          echo "**测试时间**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> test_report.md
+
+      - name: Upload test report
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-report-${{ github.run_number }}
+          path: test_report.md
+          retention-days: 30
+
+      - name: Display report in summary
+        run: |
+          echo "## 📊 Smoke Test Report" >> $GITHUB_STEP_SUMMARY
+          cat test_report.md >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.venv/
+env/
+
+# Secrets (真实 key 不提交)
+.streamlit/secrets.toml
+
+# History (运行时生成)
+history.json
+
+# OS
+.DS_Store
+Thumbs.db
