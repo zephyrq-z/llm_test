@@ -27,7 +27,7 @@
 ## 安装
 
 ```bash
-cd /Users/zzq/Developer/tools-set/llm_test
+cd llm_test
 pip install -e .
 ```
 
